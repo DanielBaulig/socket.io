@@ -282,5 +282,60 @@ module.exports = {
         }
       });
     });
+  },
+
+  'not collide with rooms': function (done) {
+    var cl = client(++ports)
+      , io = create(cl)
+      , calls = 0
+      , ws1
+      , ws2;
+
+    io.set('heartbeat interval', 1);
+
+    io.of('').on('connection', function (socket) {
+      socket.join('foobar')
+    });
+
+    io.of('/foobar').on('connection', function (socket) {
+      this.send('foobar');
+    });
+
+    cl.handshake(function (sid) {
+      ws1 = websocket(cl, sid);
+      ws1.on('message', function (data) {
+        switch(data.type) {
+          case 'heartbeat':
+            cl.end();
+            ws1.finishClose();
+            ws2.finishClose();
+            io.server.close();
+
+            calls.should.eql(0);
+
+            done();
+            break;
+          case 'message':
+            ++calls;
+            break;
+        }
+      });
+      ws1.on('open', function () {
+        ws1.packet({
+            type: 'connect'
+          , endpoint: ''
+        });
+        cl.handshake(function (sid) {
+          ws2 = websocket(cl, sid);
+          ws2.on('open', function () {
+            ws2.packet({
+                type: 'connect'
+              , endpoint: '/foobar'
+            });
+          });
+        });
+      });
+    });
   }
+
 };
